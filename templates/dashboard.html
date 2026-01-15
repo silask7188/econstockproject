@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stock Portfolio</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
+    <style>
+        body { background-color: #f8f9fa; color: #333; }
+        .text-up { color: #198754 !important; font-weight: bold; } /* Green */
+        .text-down { color: #dc3545 !important; font-weight: bold; } /* Red */
+
+        /* Chart Container */
+        .chart-wrapper {
+            position: relative;
+            height: 350px;
+            width: 100%;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
+            <h1 class="display-6 m-0">Portfolio Dashboard</h1>
+            <a href="/update_now" class="btn btn-primary">🔄 Update Prices Now</a>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card p-3 bg-white">
+                    <h6 class="text-muted text-uppercase small">Total Net Worth</h6>
+                    <h2 class="text-primary">${{ "{:,.2f}".format(portfolio.total_net_worth) }}</h2>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 bg-white">
+                    <h6 class="text-muted text-uppercase small">Cash Balance</h6>
+                    <h3>${{ "{:,.2f}".format(portfolio.cash_balance) }}</h3>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card p-3 bg-white">
+                    <h6 class="text-muted text-uppercase small">Last Updated</h6>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-success me-2">Active</span>
+                        <span>{{ portfolio.last_updated.strftime('%H:%M:%S') }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-7">
+                <div class="card mb-4">
+                    <div class="card-header bg-light fw-bold">Current Holdings</div>
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0 align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Shares</th>
+                                    <th>Price</th>
+                                    <th>Change (Last Check)</th>
+                                    <th>Total Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in holdings %}
+                                <tr>
+                                    <td class="fw-bold text-primary">{{ h.ticker }}</td>
+                                    <td>{{ h.quantity }}</td>
+                                    <td>${{ "{:,.2f}".format(h.current_price) }}</td>
+
+                                    {% set change = 0 %}
+                                    {% if h.previous_price %}
+                                        {% set change = h.current_price - h.previous_price %}
+                                    {% endif %}
+
+                                    <td class="{{ 'text-up' if change >= 0 else 'text-down' }}">
+                                        {{ "+" if change > 0 else "" }}{{ "{:,.2f}".format(change) }}
+                                    </td>
+
+                                    <td class="fw-bold">${{ "{:,.2f}".format(h.quantity * h.current_price) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="card mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <span class="fw-bold">History Chart</span>
+
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary" onclick="updateChartRange(1)">1H</button>
+                            <button class="btn btn-outline-secondary" onclick="updateChartRange(24)">24H</button>
+                            <button class="btn btn-outline-secondary" onclick="updateChartRange(168)">7D</button>
+                            <button class="btn btn-outline-primary" onclick="resetChart()">All</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="chart-wrapper">
+                            <canvas id="portfolioChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header bg-light fw-bold">Data Exports</div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-2">Download raw data for analysis:</p>
+                        <a href="/api/stock_history_json" target="_blank" class="btn btn-sm btn-outline-secondary">JSON History</a>
+                        <a href="/api/timestamps_csv?days=7" target="_blank" class="btn btn-sm btn-outline-secondary">JSON with CSV (Last 7 Days)</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let myChart; // Global chart instance
+        let fullData = []; // Store the full dataset
+
+        // 1. Fetch Data on Load
+        fetch('/api/history')
+            .then(response => response.json())
+            .then(data => {
+                // Parse API format {x: "iso-date", y: value} into JS format
+                fullData = data.map(d => ({
+                    x: new Date(d.x).getTime(), // Convert to timestamp
+                    y: d.y
+                }));
+
+                initChart(fullData);
+            });
+
+        // 2. Initialize Chart.js
+        function initChart(dataPoints) {
+            const ctx = document.getElementById('portfolioChart').getContext('2d');
+
+            // Create nice gradient fill
+            let gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(13, 110, 253, 0.3)'); // Blue top
+            gradient.addColorStop(1, 'rgba(13, 110, 253, 0.0)'); // Transparent bottom
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: dataPoints,
+                        borderColor: '#0d6efd',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        pointHoverRadius: 6,
+                        fill: true,
+                        tension: 0.2 // Smooth curve
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time', // Requires chartjs-adapter-date-fns
+                            time: {
+                                tooltipFormat: 'MMM d, HH:mm',
+                                unit: 'hour',
+                                displayFormats: { hour: 'HH:mm' }
+                            },
+                            grid: { display: false } // Cleaner look
+                        },
+                        y: {
+                            beginAtZero: false, // Don't start at $0 so we see fluctuations better
+                            ticks: {
+                                callback: function(value) { return '$' + value.toLocaleString(); }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' $' + context.raw.y.toLocaleString(undefined, {minimumFractionDigits: 2});
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        }
+
+        // --- BUTTON FUNCTIONS ---
+
+        function updateChartRange(hours) {
+            if (!myChart || fullData.length === 0) return;
+
+            const now = new Date().getTime();
+            const cutoff = now - (hours * 60 * 60 * 1000);
+
+            // Filter data locally for speed
+            const filteredData = fullData.filter(d => d.x >= cutoff);
+
+            // Update chart data
+            myChart.data.datasets[0].data = filteredData;
+
+            // Force X-axis range so the chart looks "zoomed" correctly
+            myChart.options.scales.x.min = cutoff;
+            myChart.options.scales.x.max = now;
+
+            myChart.update();
+        }
+
+        function resetChart() {
+            if (!myChart || fullData.length === 0) return;
+
+            // Restore full data
+            myChart.data.datasets[0].data = fullData;
+
+            // Remove manual limits to let it auto-scale
+            delete myChart.options.scales.x.min;
+            delete myChart.options.scales.x.max;
+
+            myChart.update();
+        }
+
+        // Auto-refresh page every 5 mins
+        setTimeout(function(){
+           window.location.reload(1);
+        }, 300000);
+    </script>
+</body>
+</html>
