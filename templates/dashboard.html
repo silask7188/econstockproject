@@ -59,41 +59,42 @@
         <div class="row">
             <div class="col-lg-7">
                 <div class="card mb-4">
-                    <div class="card-header bg-light fw-bold">Current Holdings</div>
-                    <div class="table-responsive">
-                        <table class="table table-striped mb-0 align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Ticker</th>
-                                    <th>Shares</th>
-                                    <th>Price</th>
-                                    <th>Change (Last Check)</th>
-                                    <th>Total Value</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for h in holdings %}
-                                <tr>
-                                    <td class="fw-bold text-primary">{{ h.ticker }}</td>
-                                    <td>{{ h.quantity }}</td>
-                                    <td>${{ "{:,.2f}".format(h.current_price) }}</td>
+    <div class="card-header bg-light fw-bold">Current Holdings</div>
+    <div class="table-responsive">
+        <table class="table table-striped mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Price</th>
+                    <th>Change</th>
+		    <th>Total Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in holdings %}
+                <tr>
+                    <td class="fw-bold text-primary">{{ h.ticker }}</td>
+                    <td>{{ h.quantity }}</td>
+                    <td>${{ "{:,.2f}".format(h.current_price) }}</td>
 
-                                    {% set change = 0 %}
-                                    {% if h.previous_price %}
-                                        {% set change = h.current_price - h.previous_price %}
-                                    {% endif %}
+                    {% set change = 0 %}
+                    {% if h.previous_price %}
+                        {% set change = h.current_price - h.previous_price %}
+                    {% endif %}
 
-                                    <td class="{{ 'text-up' if change >= 0 else 'text-down' }}">
-                                        {{ "+" if change > 0 else "" }}{{ "{:,.2f}".format(change) }}
-                                    </td>
+                    <td class="{{ 'text-up' if change >= 0 else 'text-down' }}">
+                        {{ "+" if change > 0 else "" }}{{ "{:,.2f}".format(change) }}
+                    </td>
 
-                                    <td class="fw-bold">${{ "{:,.2f}".format(h.quantity * h.current_price) }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+
+                    <td class="fw-bold">${{ "{:,.2f}".format(h.quantity * h.current_price) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
             </div>
 
             <div class="col-lg-5">
