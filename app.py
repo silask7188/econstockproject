@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import yfinance as yf
 import io
 import csv
+import pytz
+import pandas_market_calendars as mcal
+from datetime import datetime
 
 # Initialize Flask
 app = Flask(__name__)
@@ -16,6 +19,20 @@ from models import db, Portfolio, Holding, Transaction, PortfolioHistory, StockH
 
 db.init_app(app)
 
+
+def is_market_open():
+    nyse = mcal.get_calendar('NYSE')
+
+    now = datetime.now(pytz.timezone('US/Eastern'))
+    schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+
+    if schedule.empty:
+        return False
+
+    market_open = schedule.iloc[0]['market_open']
+    market_close = schedule.iloc[0]['market_close']
+
+    return market_open <= now <= market_close
 
 # --- ROUTES ---
 
@@ -40,7 +57,10 @@ def manual_update():
     update_market_data()
     return redirect(url_for('dashboard'))
 
-
+@app.route('/api/is_market_open/')
+def api_is_market_open():
+    status = is_market_open()
+    return jsonify({'market_open': status})
 @app.route('/api/history')
 def get_history_data():
     """
@@ -140,62 +160,63 @@ def get_timestamps_csv():
 # --- AUTOMATION ---
 
 def update_market_data():
-    with app.app_context():
-        print(f"[{datetime.now()}] 🔄 Scanning Market...")
-        portfolio = Portfolio.query.first()
-        holdings = Holding.query.all()
+    if not is_market_open():
+        with app.app_context():
+            print(f"[{datetime.now()}] 🔄 Scanning Market...")
+            portfolio = Portfolio.query.first()
+            holdings = Holding.query.all()
 
-        if not holdings: return
+            if not holdings: return
 
-        # Fetch Live Data
-        tickers_list = [h.ticker for h in holdings]
-        try:
-            ticker_str = " ".join(tickers_list)
-            data = yf.Tickers(ticker_str)
+            # Fetch Live Data
+            tickers_list = [h.ticker for h in holdings]
+            try:
+                ticker_str = " ".join(tickers_list)
+                data = yf.Tickers(ticker_str)
 
-            current_assets_value = 0.0
-            timestamp = datetime.now()
+                current_assets_value = 0.0
+                timestamp = datetime.now()
 
-            for h in holdings:
-                try:
-                    # Get new price
-                    new_price = data.tickers[h.ticker].fast_info['last_price']
+                for h in holdings:
+                    try:
+                        # Get new price
+                        new_price = data.tickers[h.ticker].fast_info['last_price']
 
-                    if new_price:
-                        # Save old price to 'previous' before overwriting
-                        if h.current_price:
-                            h.previous_price = h.current_price
-                        else:
-                            h.previous_price = h.average_buy_price
+                        if new_price:
+                            # Save old price to 'previous' before overwriting
+                            if h.current_price:
+                                h.previous_price = h.current_price
+                            else:
+                                h.previous_price = h.average_buy_price
 
-                        h.current_price = new_price
+                            h.current_price = new_price
 
-                        # Add to StockHistory
-                        sh = StockHistory(timestamp=timestamp, ticker=h.ticker, price=new_price)
-                        db.session.add(sh)
+                            # Add to StockHistory
+                            sh = StockHistory(timestamp=timestamp, ticker=h.ticker, price=new_price)
+                            db.session.add(sh)
 
-                        current_assets_value += (new_price * h.quantity)
-                except Exception as e:
-                    print(f"   ⚠️ Error {h.ticker}: {e}")
-                    current_assets_value += (h.current_price * h.quantity)
+                            current_assets_value += (new_price * h.quantity)
+                    except Exception as e:
+                        print(f"   ⚠️ Error {h.ticker}: {e}")
+                        current_assets_value += (h.current_price * h.quantity)
 
-            # Update Portfolio
-            portfolio.total_net_worth = portfolio.cash_balance + current_assets_value
-            portfolio.last_updated = timestamp
+                # Update Portfolio
+                portfolio.total_net_worth = portfolio.cash_balance + current_assets_value
+                portfolio.last_updated = timestamp
 
-            # Save Portfolio History
-            ph = PortfolioHistory(
-                date=timestamp,
-                cash_balance=portfolio.cash_balance,
-                assets_value=current_assets_value,
-                total_value=portfolio.total_net_worth
-            )
-            db.session.add(ph)
-            db.session.commit()
-            print(f"✅ Update Complete. Net Worth: ${portfolio.total_net_worth:,.2f}")
+                # Save Portfolio History
+                ph = PortfolioHistory(
+                    date=timestamp,
+                    cash_balance=portfolio.cash_balance,
+                    assets_value=current_assets_value,
+                    total_value=portfolio.total_net_worth
+                )
+                db.session.add(ph)
+                db.session.commit()
+                print(f"✅ Update Complete. Net Worth: ${portfolio.total_net_worth:,.2f}")
 
-        except Exception as e:
-            print(f"❌ Critical Update Error: {e}")
+            except Exception as e:
+                print(f"❌ Critical Update Error: {e}")
 
 
 # Scheduler
