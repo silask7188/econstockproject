@@ -160,7 +160,7 @@ def get_timestamps_csv():
 # --- AUTOMATION ---
 
 def update_market_data():
-    if not is_market_open():
+    if is_market_open():
         with app.app_context():
             print(f"[{datetime.now()}] 🔄 Scanning Market...")
             portfolio = Portfolio.query.first()

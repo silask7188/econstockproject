@@ -29,7 +29,7 @@
     <div class="container">
         <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
             <h1 class="display-6 m-0">Portfolio Dashboard</h1>
-            <a href="/update_now" class="btn btn-primary">🔄 Update Prices Now</a>
+            <a href="/update_now" class="btn btn-primary">Update Prices Now</a>
         </div>
 
         <div class="row mb-4">
@@ -55,42 +55,41 @@
         <div class="row">
             <div class="col-lg-7">
                 <div class="card mb-4">
-    <div class="card-header bg-light fw-bold">Current Holdings</div>
-    <div class="table-responsive">
-        <table class="table table-striped mb-0 align-middle">
-            <thead>
-                <tr>
-                    <th>Ticker</th>
-                    <th>Shares</th>
-                    <th>Price</th>
-                    <th>Change</th>
-		    <th>Total Value</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for h in holdings %}
-                <tr>
-                    <td class="fw-bold text-primary">{{ h.ticker }}</td>
-                    <td>{{ h.quantity }}</td>
-                    <td>${{ "{:,.2f}".format(h.current_price) }}</td>
+                    <div class="card-header bg-light fw-bold">Current Holdings</div>
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0 align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th>Shares</th>
+                                    <th>Price</th>
+                                    <th>Change</th>
+                                    <th>Total Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in holdings %}
+                                <tr>
+                                    <td class="fw-bold text-primary">{{ h.ticker }}</td>
+                                    <td>{{ h.quantity }}</td>
+                                    <td>${{ "{:,.2f}".format(h.current_price) }}</td>
 
-                    {% set change = 0 %}
-                    {% if h.previous_price %}
-                        {% set change = h.current_price - h.previous_price %}
-                    {% endif %}
+                                    {% set change = 0 %}
+                                    {% if h.previous_price %}
+                                        {% set change = h.current_price - h.previous_price %}
+                                    {% endif %}
 
-                    <td class="{{ 'text-up' if change >= 0 else 'text-down' }}">
-                        {{ "+" if change > 0 else "" }}{{ "{:,.2f}".format(change) }}
-                    </td>
+                                    <td class="{{ 'text-up' if change >= 0 else 'text-down' }}">
+                                        {{ "+" if change > 0 else "" }}{{ "{:,.2f}".format(change) }}
+                                    </td>
 
-
-                    <td class="fw-bold">${{ "{:,.2f}".format(h.quantity * h.current_price) }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
+                                    <td class="fw-bold">${{ "{:,.2f}".format(h.quantity * h.current_price) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div class="col-lg-5">
@@ -132,37 +131,47 @@
         fetch('/api/history')
             .then(response => response.json())
             .then(data => {
-                // Parse API format {x: "iso-date", y: value} into JS format
-                fullData = data.map(d => ({
-                    x: new Date(d.x).getTime(), // Convert to timestamp
-                    y: d.y
-                }));
+                // Parse API data into a richer format for easy use
+                fullData = data.map(d => {
+                    const dateObj = new Date(d.x);
+                    return {
+                        timestamp: dateObj.getTime(), // Raw time for filtering math
+                        label: dateObj.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' }), // "Jan 20, 09:30"
+                        value: d.y
+                    };
+                });
 
+                // Initialize with all data
                 initChart(fullData);
             });
 
         // 2. Initialize Chart.js
-        function initChart(dataPoints) {
+        function initChart(dataSet) {
             const ctx = document.getElementById('portfolioChart').getContext('2d');
+
+            // Extract Arrays for Chart.js (It prefers separate arrays for Category scales)
+            const labels = dataSet.map(d => d.label);
+            const prices = dataSet.map(d => d.value);
 
             // Create nice gradient fill
             let gradient = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient.addColorStop(0, 'rgba(13, 110, 253, 0.3)'); // Blue top
-            gradient.addColorStop(1, 'rgba(13, 110, 253, 0.0)'); // Transparent bottom
+            gradient.addColorStop(0, 'rgba(13, 110, 253, 0.3)');
+            gradient.addColorStop(1, 'rgba(13, 110, 253, 0.0)');
 
             myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
+                    labels: labels, // X-Axis Labels
                     datasets: [{
                         label: 'Portfolio Value',
-                        data: dataPoints,
+                        data: prices, // Y-Axis Values
                         borderColor: '#0d6efd',
                         backgroundColor: gradient,
                         borderWidth: 2,
-                        pointRadius: 2,
+                        pointRadius: 0, // Hide points for a smoother line (show on hover)
                         pointHoverRadius: 6,
                         fill: true,
-                        tension: 0.2 // Smooth curve
+                        tension: 0.2
                     }]
                 },
                 options: {
@@ -170,16 +179,15 @@
                     maintainAspectRatio: false,
                     scales: {
                         x: {
-                            type: 'time', // Requires chartjs-adapter-date-fns
-                            time: {
-                                tooltipFormat: 'MMM d, HH:mm',
-                                unit: 'hour',
-                                displayFormats: { hour: 'HH:mm' }
-                            },
-                            grid: { display: false } // Cleaner look
+                            // REMOVED "type: 'time'" -> This forces points to be consecutive
+                            grid: { display: false },
+                            ticks: {
+                                maxTicksLimit: 8, // Prevent label crowding
+                                maxRotation: 0
+                            }
                         },
                         y: {
-                            beginAtZero: false, // Don't start at $0 so we see fluctuations better
+                            beginAtZero: false,
                             ticks: {
                                 callback: function(value) { return '$' + value.toLocaleString(); }
                             }
@@ -190,15 +198,15 @@
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return ' $' + context.raw.y.toLocaleString(undefined, {minimumFractionDigits: 2});
+                                    // context.raw is just the number now
+                                    return ' $' + context.raw.toLocaleString(undefined, {minimumFractionDigits: 2});
                                 }
                             }
                         }
                     },
                     interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
+                        mode: 'index', // 'index' is better for category charts
+                        intersect: false,
                     }
                 }
             });
@@ -212,16 +220,17 @@
             const now = new Date().getTime();
             const cutoff = now - (hours * 60 * 60 * 1000);
 
-            // Filter data locally for speed
-            const filteredData = fullData.filter(d => d.x >= cutoff);
+            // Filter the source data
+            const filteredData = fullData.filter(d => d.timestamp >= cutoff);
 
-            // Update chart data
-            myChart.data.datasets[0].data = filteredData;
+            // Extract new arrays
+            const newLabels = filteredData.map(d => d.label);
+            const newPrices = filteredData.map(d => d.value);
 
-            // Force X-axis range so the chart looks "zoomed" correctly
-            myChart.options.scales.x.min = cutoff;
-            myChart.options.scales.x.max = now;
-
+            // Update Chart
+            myChart.data.labels = newLabels;
+            myChart.data.datasets[0].data = newPrices;
+            
             myChart.update();
         }
 
@@ -229,11 +238,8 @@
             if (!myChart || fullData.length === 0) return;
 
             // Restore full data
-            myChart.data.datasets[0].data = fullData;
-
-            // Remove manual limits to let it auto-scale
-            delete myChart.options.scales.x.min;
-            delete myChart.options.scales.x.max;
+            myChart.data.labels = fullData.map(d => d.label);
+            myChart.data.datasets[0].data = fullData.map(d => d.value);
 
             myChart.update();
         }
